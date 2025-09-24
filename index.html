@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 Document Processor</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f8f9fa; color: #333; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 20px; }
+        .container { width: 100%; max-width: 800px; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h1 { color: #5a2a88; text-align: center; font-weight: 600; } /* Adjusted color to match image */
+        .mode-selector { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .mode-selector button { padding: 10px 20px; border: 1px solid #ccc; background-color: #f1f1f1; cursor: pointer; border-radius: 5px; font-size: 16px; transition: all 0.3s; }
+        .mode-selector button.active { background-color: #5a2a88; color: white; border-color: #5a2a88; }
+        .rules { background-color: #e9e3f0; border-left: 5px solid #5a2a88; padding: 15px; margin: 20px 0; border-radius: 5px; }
+        .tool-section { margin-top: 20px; }
+        #image-container { margin-top: 20px; max-width: 100%; display: flex; justify-content: center; align-items: center; min-height: 200px; background-color: #f1f1f1; border-radius: 5px;}
+        #image-to-crop, #image-for-pdf { display: block; max-width: 100%; max-height: 500px; }
+        #status-message { margin-top: 15px; padding: 10px; border-radius: 4px; text-align: center; font-weight: bold; display: none; }
+        .status-success { background-color: #d4edda; color: #155724; }
+        .status-error { background-color: #f8d7da; color: #721c24; }
+        .status-info { background-color: #d1ecf1; color: #0c5460; }
+        button#process-button { width: 100%; padding: 12px 20px; background-color: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 18px; transition: background-color 0.3s; font-weight: bold; }
+        button#process-button:disabled { background-color: #aaa; }
+        input[type="file"] { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        #info-box { text-align: center; font-family: monospace; color: #555; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>GRADUATE APTITUDE TEST IN ENGINEERING 2026</h1>
+        
+        <div class="mode-selector">
+            <button id="btn-photo" class="active">Photograph</button>
+            <button id="btn-signature">Signature</button>
+            <button id="btn-id">Photo ID</button>
+        </div>
+
+        <div id="rules-container" class="rules"></div>
+
+        <div class="tool-section">
+            <label for="upload-input" id="upload-label">1. Upload Image File</label>
+            <input type="file" id="upload-input" accept="image/jpeg,image/png,image/gif">
+            <p id="pdf-note" style="display:none; font-size: 14px; color: #666;">Note: Please upload a clear JPG or PNG image of your ID card. The tool will convert it to a PDF.</p>
+        </div>
+
+        <div id="cropper-ui">
+            <div id="image-container">
+                <img id="image-to-crop">
+            </div>
+            <div id="info-box" style="display: none;">Current Aspect Ratio (W/H): <span id="aspect-ratio-info">Free</span></div>
+        </div>
+
+        <div id="pdf-ui" style="display:none;">
+            <p style="text-align:center; margin-top:20px;">Image will be converted to a size-compliant PDF.</p>
+        </div>
+
+        <div id="status-message"></div>
+
+        <button id="process-button" style="margin-top: 20px;" disabled>Process and Download</button>
+
+    </div>
+
+    <script>
+        const { jsPDF } = window.jspdf;
+
+        // --- CONFIGURATION FOR EACH DOCUMENT TYPE ---
+        const CONFIG = {
+            photograph: {
+                rules: `<ul><li><b>Format:</b> JPG/PNG</li><li><b>Pixels (Min):</b> 200x260</li><li><b>Pixels (Max):</b> 530x690</li><li><b>Aspect Ratio (W/H):</b> 0.66 to 0.89</li><li><b>Face Coverage:</b> 60-70%</li><li><b>File Size:</b> 5KB - 600KB</li></ul>`,
+                minWidth: 200, maxWidth: 530, minHeight: 260, maxHeight: 690,
+                minAspectRatio: 0.66, maxAspectRatio: 0.89, // This is W/H
+                autoCropArea: 0.65, minSizeKB: 5, maxSizeKB: 600, outputFormat: 'image/jpeg'
+            },
+            signature: {
+                rules: `<ul><li><b>Format:</b> JPG</li><li><b>Pixels (Min):</b> 250x80</li><li><b>Pixels (Max):</b> 580x180</li><li><b>Aspect Ratio (W/H):</b> 2.75 to 3.75</li><li><b>Occupancy:</b> 70-80%</li><li><b>File Size:</b> 3KB - 300KB</li></ul>`,
+                minWidth: 250, maxWidth: 580, minHeight: 80, maxHeight: 180,
+                minAspectRatio: 2.75, maxAspectRatio: 3.75, // This is W/H
+                autoCropArea: 0.75, minSizeKB: 3, maxSizeKB: 300, outputFormat: 'image/jpeg'
+            },
+            id: {
+                rules: `<ul><li><b>Format:</b> PDF</li><li><b>File Size:</b> 10KB - 600KB</li></ul>`,
+                minSizeKB: 10, maxSizeKB: 600, outputFormat: 'application/pdf'
+            }
+        };
+
+        let currentMode = 'photograph';
+        let cropper;
+        let uploadedFileContent = null;
+        let uploadedFileName = 'download';
+
+        // --- DOM ELEMENTS ---
+        const modeButtons = { photograph: document.getElementById('btn-photo'), signature: document.getElementById('btn-signature'), id: document.getElementById('btn-id') };
+        const rulesContainer = document.getElementById('rules-container');
+        const uploadInput = document.getElementById('upload-input');
+        const processButton = document.getElementById('process-button');
+        const imageToCrop = document.getElementById('image-to-crop');
+        const cropperUI = document.getElementById('cropper-ui');
+        const pdfUI = document.getElementById('pdf-ui');
+        const pdfNote = document.getElementById('pdf-note');
+        const statusMessage = document.getElementById('status-message');
+        const infoBox = document.getElementById('info-box');
+        const aspectRatioInfo = document.getElementById('aspect-ratio-info');
+
+        // --- FUNCTIONS ---
+        function showStatus(message, type) {
+            statusMessage.textContent = message;
+            statusMessage.className = `status-${type}`;
+            statusMessage.style.display = 'block';
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            uploadedFileContent = null;
+            uploadInput.value = ''; 
+            processButton.disabled = true;
+
+            for (const key in modeButtons) {
+                modeButtons[key].classList.toggle('active', key === mode);
+            }
+
+            rulesContainer.innerHTML = CONFIG[mode].rules;
+            const isCropperMode = (mode === 'photograph' || mode === 'signature');
+            cropperUI.style.display = isCropperMode ? 'block' : 'none';
+            infoBox.style.display = isCropperMode ? 'block' : 'none';
+            pdfUI.style.display = isCropperMode ? 'none' : 'block';
+            pdfNote.style.display = (mode === 'id') ? 'block' : 'none';
+
+            if (cropper) {
+                cropper.destroy();
+                imageToCrop.src = '';
+            }
+
+            processButton.textContent = `Process and Download ${mode.charAt(0).toUpperCase() + mode.slice(1)}`;
+            showStatus(`Select a file for the ${mode}.`, 'info');
+        }
+
+        function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            uploadedFileName = file.name.split('.')[0];
+            const reader = new FileReader();
+            
+            reader.onload = event => {
+                uploadedFileContent = event.target.result;
+                processButton.disabled = false;
+                if (currentMode === 'photograph' || currentMode === 'signature') {
+                    imageToCrop.src = uploadedFileContent;
+                    if (cropper) cropper.destroy();
+                    
+                    cropper = new Cropper(imageToCrop, {
+                        viewMode: 1,
+                        autoCropArea: CONFIG[currentMode].autoCropArea,
+                        // No fixed aspect ratio initially, allowing free cropping
+                        crop(event) {
+                            const ratio = event.detail.width / event.detail.height;
+                            aspectRatioInfo.textContent = ratio.toFixed(2);
+                        }
+                    });
+                }
+                showStatus("File is ready. Adjust the crop and click the process button.", "success");
+            };
+            
+            reader.readAsDataURL(file);
+        }
+        
+        // --- NEW: AUTO-ADJUSTER LOGIC ---
+        imageToCrop.addEventListener('cropend', () => {
+            if (!cropper || (currentMode !== 'photograph' && currentMode !== 'signature')) return;
+
+            const settings = CONFIG[currentMode];
+            const cropData = cropper.getData();
+            const currentRatio = cropData.width / cropData.height;
+
+            let clampedRatio = currentRatio;
+            if (currentRatio < settings.minAspectRatio) {
+                clampedRatio = settings.minAspectRatio;
+            } else if (currentRatio > settings.maxAspectRatio) {
+                clampedRatio = settings.maxAspectRatio;
+            }
+
+            // If the ratio was outside the bounds, snap it to the valid range
+            if (clampedRatio !== currentRatio) {
+                cropper.setAspectRatio(clampedRatio);
+                showStatus(`Aspect ratio auto-adjusted to ${clampedRatio.toFixed(2)} to meet requirements.`, "info");
+            }
+        });
+
+
+        async function processAndDownload() {
+            if (!uploadedFileContent) {
+                showStatus("Please upload a file first.", "error");
+                return;
+            }
+
+            const settings = CONFIG[currentMode];
+            let blob;
+            let fileName;
+
+            if (currentMode === 'photograph' || currentMode === 'signature') {
+                const cropData = cropper.getData(true);
+                let targetWidth = cropData.width;
+                let targetHeight = cropData.height;
+                const aspect = targetWidth / targetHeight;
+
+                targetWidth = Math.max(settings.minWidth, Math.min(settings.maxWidth, targetWidth));
+                targetHeight = Math.round(targetWidth / aspect);
+                if (targetHeight > settings.maxHeight) {
+                    targetHeight = settings.maxHeight;
+                    targetWidth = Math.round(targetHeight * aspect);
+                }
+                if (targetHeight < settings.minHeight) {
+                    targetHeight = settings.minHeight;
+                    targetWidth = Math.round(targetHeight * aspect);
+                }
+
+                const canvas = cropper.getCroppedCanvas({
+                    width: targetWidth, height: targetHeight, fillColor: '#ffffff', imageSmoothingQuality: 'high'
+                });
+                
+                let quality = 0.95;
+                do {
+                    blob = await new Promise(res => canvas.toBlob(res, settings.outputFormat, quality));
+                    quality -= 0.05;
+                } while (blob.size / 1024 > settings.maxSizeKB && quality > 0.4);
+
+                fileName = `${uploadedFileName}_${currentMode}.jpg`;
+
+            } else if (currentMode === 'id') {
+                const img = new Image();
+                img.src = uploadedFileContent;
+                await new Promise(resolve => img.onload = resolve);
+                
+                const doc = new jsPDF();
+                const pageW = doc.internal.pageSize.getWidth();
+        
+                // Compress image on a canvas before adding to PDF to control size
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = 1000; // A reasonable resolution for the PDF
+                canvas.height = canvas.width / (img.width / img.height);
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                const compressedImageData = canvas.toDataURL('image/jpeg', 0.7); // 70% quality
+
+                const imgProps = doc.getImageProperties(compressedImageData);
+                const pdfWidth = pageW - 20;
+                const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+                doc.addImage(compressedImageData, 'JPEG', 10, 10, pdfWidth, pdfHeight);
+                blob = doc.output('blob');
+                fileName = `${uploadedFileName}_${currentMode}.pdf`;
+            }
+
+            const fileSizeKB = blob.size / 1024;
+            if (fileSizeKB < settings.minSizeKB) {
+                showStatus(`Error: Final size is ${fileSizeKB.toFixed(1)}KB, which is smaller than the minimum ${settings.minSizeKB}KB.`, 'error');
+                return;
+            }
+            if (fileSizeKB > settings.maxSizeKB) {
+                showStatus(`Error: Final size is ${fileSizeKB.toFixed(1)}KB, which is larger than the maximum ${settings.maxSizeKB}KB.`, 'error');
+                return;
+            }
+
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = fileName;
+            link.click();
+            URL.revokeObjectURL(link.href);
+            showStatus(`Success! File downloaded. Size: ${fileSizeKB.toFixed(1)}KB`, 'success');
+        }
+
+        // --- EVENT LISTENERS ---
+        uploadInput.addEventListener('change', handleFileUpload);
+        processButton.addEventListener('click', processAndDownload);
+        for (const key in modeButtons) {
+            modeButtons[key].addEventListener('click', () => setMode(key));
+        }
+
+        // --- INITIALIZE ---
+        setMode('photograph');
+    </script>
+</body>
+</html>
