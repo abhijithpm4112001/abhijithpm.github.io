@@ -4,29 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GATE 2026 Document Processor</title>
+    
+    <link rel="stylesheet" href="web.css">
+    
     <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f8f9fa; color: #333; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 20px; }
-        .container { width: 100%; max-width: 800px; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        h1 { color: #5a2a88; text-align: center; font-weight: 600; } /* Adjusted color to match image */
-        .mode-selector { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-        .mode-selector button { padding: 10px 20px; border: 1px solid #ccc; background-color: #f1f1f1; cursor: pointer; border-radius: 5px; font-size: 16px; transition: all 0.3s; }
-        .mode-selector button.active { background-color: #5a2a88; color: white; border-color: #5a2a88; }
-        .rules { background-color: #e9e3f0; border-left: 5px solid #5a2a88; padding: 15px; margin: 20px 0; border-radius: 5px; }
-        .tool-section { margin-top: 20px; }
-        #image-container { margin-top: 20px; max-width: 100%; display: flex; justify-content: center; align-items: center; min-height: 200px; background-color: #f1f1f1; border-radius: 5px;}
-        #image-to-crop, #image-for-pdf { display: block; max-width: 100%; max-height: 500px; }
-        #status-message { margin-top: 15px; padding: 10px; border-radius: 4px; text-align: center; font-weight: bold; display: none; }
-        .status-success { background-color: #d4edda; color: #155724; }
-        .status-error { background-color: #f8d7da; color: #721c24; }
-        .status-info { background-color: #d1ecf1; color: #0c5460; }
-        button#process-button { width: 100%; padding: 12px 20px; background-color: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 18px; transition: background-color 0.3s; font-weight: bold; }
-        button#process-button:disabled { background-color: #aaa; }
-        input[type="file"] { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
-        #info-box { text-align: center; font-family: monospace; color: #555; margin-top: 10px; }
-    </style>
 </head>
 <body>
     <div class="container">
@@ -154,7 +138,6 @@
                     cropper = new Cropper(imageToCrop, {
                         viewMode: 1,
                         autoCropArea: CONFIG[currentMode].autoCropArea,
-                        // No fixed aspect ratio initially, allowing free cropping
                         crop(event) {
                             const ratio = event.detail.width / event.detail.height;
                             aspectRatioInfo.textContent = ratio.toFixed(2);
@@ -167,7 +150,6 @@
             reader.readAsDataURL(file);
         }
         
-        // --- NEW: AUTO-ADJUSTER LOGIC ---
         imageToCrop.addEventListener('cropend', () => {
             if (!cropper || (currentMode !== 'photograph' && currentMode !== 'signature')) return;
 
@@ -182,7 +164,6 @@
                 clampedRatio = settings.maxAspectRatio;
             }
 
-            // If the ratio was outside the bounds, snap it to the valid range
             if (clampedRatio !== currentRatio) {
                 cropper.setAspectRatio(clampedRatio);
                 showStatus(`Aspect ratio auto-adjusted to ${clampedRatio.toFixed(2)} to meet requirements.`, "info");
@@ -237,13 +218,12 @@
                 const doc = new jsPDF();
                 const pageW = doc.internal.pageSize.getWidth();
         
-                // Compress image on a canvas before adding to PDF to control size
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
-                canvas.width = 1000; // A reasonable resolution for the PDF
+                canvas.width = 1000;
                 canvas.height = canvas.width / (img.width / img.height);
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                const compressedImageData = canvas.toDataURL('image/jpeg', 0.7); // 70% quality
+                const compressedImageData = canvas.toDataURL('image/jpeg', 0.7);
 
                 const imgProps = doc.getImageProperties(compressedImageData);
                 const pdfWidth = pageW - 20;
